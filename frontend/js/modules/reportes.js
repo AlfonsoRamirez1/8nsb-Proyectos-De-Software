@@ -310,7 +310,10 @@ window.Modules.reportes = {
             <button class="btn btn-secondary" style="margin-bottom: 0.5rem;" onclick="Modules.reportes.showMenu()">← Volver al Menú</button>
             <h2>🚪 Reporte de Ingresos y Egresos Hospitalarios</h2>
           </div>
-          <button id="refreshHospBtn" class="btn btn-primary">🔄 Actualizar Datos</button>
+          <div>
+            <button id="refreshHospBtn" class="btn btn-primary">🔄 Actualizar Datos</button>
+            <button id="exportCsvBtn" class="btn btn-secondary" style="margin-left: 0.5rem; display: none;">📥 Exportar CSV</button>
+          </div>
         </div>
 
         <div style="background: var(--background); padding: 1rem; border-radius: 8px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
@@ -340,6 +343,7 @@ window.Modules.reportes = {
     `;
 
     document.getElementById("refreshHospBtn").addEventListener("click", () => this.fetchIngresosEgresosHospData());
+    document.getElementById("exportCsvBtn").addEventListener("click", () => this.exportarCSV());
     document.getElementById("filterHospitalHosp").addEventListener("change", (e) => {
       this.selectedHospital = e.target.value;
       this.fetchIngresosEgresosHospData();
@@ -376,6 +380,8 @@ window.Modules.reportes = {
       const res = await response.json();
 
       if (res.ok) {
+        this.currentHospData = res.data;
+        document.getElementById("exportCsvBtn").style.display = 'inline-block';
         this.renderIngresosEgresosHospStats(res.data);
       } else {
         UI.toast.show(res.message, "error");
@@ -389,7 +395,7 @@ window.Modules.reportes = {
 
   renderIngresosEgresosHospStats(data) {
     const container = document.getElementById("reportDataContainer");
-    const { ingresos_por_area, egresos_por_area, registros } = data;
+    const { ingresos_por_area, egresos_por_area, registros, ocupacion_actual } = data;
 
     let resumenIngresosHtml = ingresos_por_area.map(r => `
       <div class="card" style="background: var(--background); border: none; border-left: 4px solid var(--primary);">
@@ -402,6 +408,13 @@ window.Modules.reportes = {
       <div class="card" style="background: var(--background); border: none; border-left: 4px solid var(--danger);">
         <h4 style="color: var(--text-light); font-size: 0.8rem; text-transform: uppercase;">${r.NOMBREAREA}</h4>
         <div style="font-size: 1.5rem; font-weight: 700; color: var(--danger);">${r.total_egresos} <span style="font-size: 0.9rem; font-weight: 400; color: var(--text-light);">egresos</span></div>
+      </div>
+    `).join('');
+
+    let resumenOcupacionHtml = (ocupacion_actual || []).map(r => `
+      <div class="card" style="background: var(--background); border: none; border-left: 4px solid #10b981;">
+        <h4 style="color: var(--text-light); font-size: 0.8rem; text-transform: uppercase;">${r.NOMBREAREA}</h4>
+        <div style="font-size: 1.5rem; font-weight: 700; color: #10b981;">${r.total_ocupacion} <span style="font-size: 0.9rem; font-weight: 400; color: var(--text-light);">ocupadas</span></div>
       </div>
     `).join('');
 
@@ -425,17 +438,23 @@ window.Modules.reportes = {
     }
 
     container.innerHTML = `
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin-bottom: 2rem;">
         <div>
           <h3 style="margin-bottom: 1rem;">📈 Ingresos por Área</h3>
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
             ${resumenIngresosHtml || '<p style="color: var(--text-light);">Sin ingresos registrados.</p>'}
           </div>
         </div>
         <div>
           <h3 style="margin-bottom: 1rem;">📉 Egresos por Área</h3>
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
             ${resumenEgresosHtml || '<p style="color: var(--text-light);">Sin egresos registrados.</p>'}
+          </div>
+        </div>
+        <div>
+          <h3 style="margin-bottom: 1rem;">🛏️ Ocupación Actual</h3>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+            ${resumenOcupacionHtml || '<p style="color: var(--text-light);">No hay habitaciones ocupadas.</p>'}
           </div>
         </div>
       </div>
@@ -459,6 +478,37 @@ window.Modules.reportes = {
         </div>
       </div>
     `;
+  },
+
+  exportarCSV() {
+    if (!this.currentHospData || !this.currentHospData.registros || this.currentHospData.registros.length === 0) {
+      UI.toast.show("No hay datos para exportar", "warning");
+      return;
+    }
+
+    const registros = this.currentHospData.registros;
+    let csvContent = "data:text/csv;charset=utf-8,";
+    
+    // Encabezados
+    csvContent += "Tipo Movimiento,Fecha,Área,Habitación\n";
+
+    // Filas
+    registros.forEach(r => {
+      const tipo = r.TIPO_MOV;
+      const fecha = r.FECHA;
+      const area = `"${r.NOMBREAREA}"`;
+      const habitacion = `"${r.NOMBREHABITACION}"`;
+      
+      csvContent += `${tipo},${fecha},${area},${habitacion}\n`;
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `reporte_movimientos_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   },
 
   async loadOtrosConsultoriosView() {

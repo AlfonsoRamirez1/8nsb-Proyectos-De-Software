@@ -28,15 +28,21 @@ try {
                 i.MEDICOS_EXPEDIENTE,
                 m.NOMBRE,
                 m.APELLIDOPATERNO,
-                m.APELLIDOMATERNO
+                m.APELLIDOMATERNO,
+                e.ID AS egreso_id,
+                CASE 
+                    WHEN e.ID IS NOT NULL THEN DATEDIFF(e.FECHAEGRESO, i.FECHAINGRESO)
+                    ELSE DATEDIFF(NOW(), i.FECHAINGRESO)
+                END AS dias_estancia
             FROM INGRESOS i
             INNER JOIN HABITACIONES h ON h.ID = i.HABITACIONES_ID
             INNER JOIN AREAS a ON a.ID = h.AREAS_ID
             INNER JOIN MEDICOS m ON m.EXPEDIENTE = i.MEDICOS_EXPEDIENTE
+            LEFT JOIN EGRESOS e ON i.ID = e.INGRESOS_ID
             ORDER BY i.ID ASC, i.HABITACIONES_ID ASC";
 
     $stmt = $conn->query($sql);
-    $data = $stmt->fetchAll();
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     jsonResponse(200, [
         "ok" => true,

@@ -74,6 +74,24 @@ try {
         ]);
     }
 
+    $sqlCheckDisponibilidad = "SELECT i.ID 
+                               FROM INGRESOS i
+                               LEFT JOIN EGRESOS e ON i.ID = e.INGRESOS_ID
+                               WHERE i.HABITACIONES_ID = :habitacionesId 
+                               AND e.ID IS NULL
+                               LIMIT 1";
+    $stmtCheckDisponibilidad = $conn->prepare($sqlCheckDisponibilidad);
+    $stmtCheckDisponibilidad->execute([
+        ":habitacionesId" => (int)$habitacionesId
+    ]);
+
+    if ($stmtCheckDisponibilidad->fetch()) {
+        jsonResponse(409, [
+            "ok" => false,
+            "message" => "La habitación seleccionada ya se encuentra ocupada por otro paciente activo."
+        ]);
+    }
+
     $sql = "INSERT INTO INGRESOS (
                 TIPO,
                 FECHAINGRESO,
