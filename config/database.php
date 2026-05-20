@@ -3,8 +3,8 @@ class Database
 {
     private string $host = "localhost";
     private string $db_name = "hospital_db";
-    private string $username = "root";
-    private string $password = "";
+    private string $username = "hospital_user";
+    private string $password = "123456";
     public ?PDO $conn = null;
 
     public function getConnection(): ?PDO

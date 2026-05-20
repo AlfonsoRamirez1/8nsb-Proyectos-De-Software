@@ -5,8 +5,12 @@
 window.Modules.ingresos = {
   ingresos: [],
   egresos: [],
+  historial: [],
+  ocupacion: [],
   filteredIngresos: [],
   filteredEgresos: [],
+  filteredHistorial: [],
+  filteredOcupacion: [],
   medicos: [],
   hospitales: [],
   areas: [],
@@ -26,9 +30,11 @@ async init() {
     const contentArea = document.getElementById("contentArea");
     contentArea.innerHTML = `
       <div class="card" style="margin-bottom: 1rem;">
-        <div class="tabs-container" style="display: flex; gap: 1rem; border-bottom: 1px solid var(--border); margin-bottom: 1rem;">
+        <div class="tabs-container" style="display: flex; gap: 1rem; border-bottom: 1px solid var(--border); margin-bottom: 1rem; overflow-x: auto;">
           <button id="tabIngresos" class="tab-btn active" style="padding: 0.75rem 1.5rem; border: none; background: none; cursor: pointer; border-bottom: 2px solid var(--primary); font-weight: 600;">Ingresos</button>
           <button id="tabEgresos" class="tab-btn" style="padding: 0.75rem 1.5rem; border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-light);">Egresos</button>
+          <button id="tabHistorial" class="tab-btn" style="padding: 0.75rem 1.5rem; border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-light);">Historial</button>
+          <button id="tabOcupacion" class="tab-btn" style="padding: 0.75rem 1.5rem; border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-light);">Ocupación</button>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
@@ -48,31 +54,42 @@ async init() {
 
     document.getElementById("tabIngresos").addEventListener("click", () => this.switchTab('ingresos'));
     document.getElementById("tabEgresos").addEventListener("click", () => this.switchTab('egresos'));
+    document.getElementById("tabHistorial").addEventListener("click", () => this.switchTab('historial'));
+    document.getElementById("tabOcupacion").addEventListener("click", () => this.switchTab('ocupacion'));
     document.getElementById("ingresosSearch").addEventListener("input", (e) => this.filter(e.target.value));
     document.getElementById("addIngresoBtn").addEventListener("click", () => this.showIngresoModal());
   },
 
   switchTab(tab) {
     this.activeTab = tab;
-    const tabI = document.getElementById("tabIngresos");
-    const tabE = document.getElementById("tabEgresos");
+    const tabs = ['Ingresos', 'Egresos', 'Historial', 'Ocupacion'];
+    
+    tabs.forEach(t => {
+      const btn = document.getElementById(`tab${t}`);
+      if (t.toLowerCase() === tab) {
+        btn.style.borderBottomColor = 'var(--primary)';
+        btn.style.color = 'var(--text)';
+        btn.style.fontWeight = '600';
+      } else {
+        btn.style.borderBottomColor = 'transparent';
+        btn.style.color = 'var(--text-light)';
+        btn.style.fontWeight = 'normal';
+      }
+    });
+
     const addBtn = document.getElementById("addIngresoBtn");
+    addBtn.style.display = (tab === 'ingresos') ? 'block' : 'none';
 
-    if (tab === 'ingresos') {
-      tabI.style.borderBottomColor = 'var(--primary)';
-      tabI.style.color = 'var(--text)';
-      tabE.style.borderBottomColor = 'transparent';
-      tabE.style.color = 'var(--text-light)';
-      addBtn.style.display = 'block';
+    const searchInput = document.getElementById("ingresosSearch");
+    searchInput.style.display = (tab === 'ocupacion') ? 'none' : 'block';
+
+    if (tab === 'ocupacion') {
+      this.renderOcupacion();
+    } else if (tab === 'historial') {
+      this.renderHistorialTable();
     } else {
-      tabE.style.borderBottomColor = 'var(--primary)';
-      tabE.style.color = 'var(--text)';
-      tabI.style.borderBottomColor = 'transparent';
-      tabI.style.color = 'var(--text-light)';
-      addBtn.style.display = 'none'; // Egresos se generan desde un ingreso
+      this.renderTable();
     }
-
-    this.renderTable();
   },
 
   async loadMedicos() {
@@ -146,9 +163,11 @@ async loadHabitaciones() {
     try {
       UI.showSkeleton("#ingresosTableContainer");
       
-      const [ingRes, egRes] = await Promise.all([
+      const [ingRes, egRes, histRes, ocupRes] = await Promise.all([
         fetch("../api/ingresos/listar.php", { credentials: "include" }).then(r => r.json()),
-        fetch("../api/egresos/listar_egresos.php", { credentials: "include" }).then(r => r.json())
+        fetch("../api/egresos/listar_egresos.php", { credentials: "include" }).then(r => r.json()),
+        fetch("../api/ingresos/historial.php", { credentials: "include" }).then(r => r.json()),
+        fetch("../api/habitaciones/ocupacion.php", { credentials: "include" }).then(r => r.json())
       ]);
 
       if (ingRes.ok) {
@@ -159,8 +178,16 @@ async loadHabitaciones() {
         this.egresos = egRes.data;
         this.filteredEgresos = [...this.egresos];
       }
+      if (histRes.ok) {
+        this.historial = histRes.data;
+        this.filteredHistorial = [...this.historial];
+      }
+      if (ocupRes.ok) {
+        this.ocupacion = ocupRes.data;
+        this.filteredOcupacion = [...this.ocupacion];
+      }
 
-      this.renderTable();
+      this.switchTab(this.activeTab);
     } catch (error) {
       UI.toast.show("Error al cargar datos", "error");
     }
@@ -224,6 +251,123 @@ async loadHabitaciones() {
     container.innerHTML = html;
   },
 
+  renderHistorialTable() {
+    const container = document.getElementById("ingresosTableContainer");
+    const data = this.filteredHistorial;
+    
+    if (data.length === 0) {
+      container.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--text-light);">No hay registros en el historial.</div>`;
+      return;
+    }
+
+    let html = `
+      <table>
+        <thead>
+          <tr>
+            <th>Ingreso ID</th>
+            <th>Habitación / Área</th>
+            <th>Médico</th>
+            <th>Fecha Ingreso</th>
+            <th>Fecha Egreso</th>
+            <th>Estancia</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    data.forEach(item => {
+      const isAlta = item.ESTADO === 'Alta';
+      const badgeStyle = isAlta 
+        ? "background: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 6px; font-weight: 600; font-size: 0.75rem;" 
+        : "background: #fef9c3; color: #854d0e; padding: 4px 8px; border-radius: 6px; font-weight: 600; font-size: 0.75rem;";
+      
+      const estanciaTexto = item.DIAS_ESTANCIA == 0 ? "Menos de 1 día" : `${item.DIAS_ESTANCIA} día(s)`;
+
+      html += `
+        <tr>
+          <td><span style="font-weight: 600;">#${item.INGRESO_ID}</span></td>
+          <td>
+            <div style="font-weight: 600;">${item.NOMBREHABITACION}</div>
+            <div style="font-size: 0.75rem; color: var(--text-light);">${item.HOSPITAL} - ${item.NOMBREAREA}</div>
+          </td>
+          <td>Dr. ${item.MEDICO_NOMBRE} ${item.MEDICO_PATERNO}</td>
+          <td style="font-size: 0.85rem;">${new Date(item.FECHAINGRESO).toLocaleString()}</td>
+          <td style="font-size: 0.85rem;">${item.FECHAEGRESO ? new Date(item.FECHAEGRESO).toLocaleString() : '-'}</td>
+          <td>${estanciaTexto}</td>
+          <td><span style="${badgeStyle}">${item.ESTADO}</span></td>
+        </tr>
+      `;
+    });
+
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+  },
+
+  renderOcupacion() {
+    const container = document.getElementById("ingresosTableContainer");
+    const data = this.filteredOcupacion;
+
+    if (data.length === 0) {
+      container.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--text-light);">No se encontraron habitaciones.</div>`;
+      return;
+    }
+
+    // Agrupar por hospital y área
+    const grouped = {};
+    data.forEach(h => {
+      if (!grouped[h.HOSPITAL]) grouped[h.HOSPITAL] = {};
+      if (!grouped[h.HOSPITAL][h.NOMBREAREA]) grouped[h.HOSPITAL][h.NOMBREAREA] = [];
+      grouped[h.HOSPITAL][h.NOMBREAREA].push(h);
+    });
+
+    let html = '';
+
+    for (const hospital in grouped) {
+      html += `<h2 style="margin: 1.5rem 0 1rem; color: var(--text); border-bottom: 2px solid var(--border); padding-bottom: 0.5rem;">🏥 ${hospital}</h2>`;
+      
+      for (const area in grouped[hospital]) {
+        html += `<h3 style="margin: 1rem 0; color: var(--text-light); font-size: 1.1rem;">${area}</h3>`;
+        html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 2rem;">`;
+        
+        grouped[hospital][area].forEach(hab => {
+          const isOccupied = hab.INGRESO_ACTIVO_ID !== null;
+          const bgCard = isOccupied ? '#fef2f2' : '#f0fdf4';
+          const borderLeft = isOccupied ? '4px solid var(--danger)' : '4px solid #10b981';
+          const statusIcon = isOccupied ? '🛏️' : '✅';
+          const statusText = isOccupied ? 'Ocupada' : 'Disponible';
+
+          html += `
+            <div class="card" style="background: ${bgCard}; border: none; border-left: ${borderLeft}; padding: 1rem;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+                <h4 style="margin: 0; font-size: 1.1rem;">${hab.NOMBREHABITACION}</h4>
+                <span title="${statusText}">${statusIcon}</span>
+              </div>
+              ${isOccupied ? `
+                <div style="font-size: 0.85rem; margin-top: 0.5rem; color: #7f1d1d;">
+                  <strong>Ingreso:</strong> #${hab.INGRESO_ACTIVO_ID}<br>
+                  <strong>Médico:</strong> ${hab.MEDICO_NOMBRE} ${hab.MEDICO_PATERNO}<br>
+                  <strong>Desde:</strong> ${new Date(hab.FECHAINGRESO).toLocaleDateString()}<br>
+                  <div style="margin-top: 0.25rem;">
+                    <span style="background: var(--danger); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem;">${hab.DIAS_OCUPADA} día(s) ocupada</span>
+                  </div>
+                </div>
+              ` : `
+                <div style="font-size: 0.85rem; margin-top: 0.5rem; color: #14532d;">
+                  Lista para nuevo ingreso
+                </div>
+              `}
+            </div>
+          `;
+        });
+        
+        html += `</div>`; // Close grid
+      }
+    }
+
+    container.innerHTML = html;
+  },
+
   filter(query) {
     const q = query.toLowerCase();
     if (this.activeTab === 'ingresos') {
@@ -232,14 +376,21 @@ async loadHabitaciones() {
         i.NOMBREHABITACION.toLowerCase().includes(q) ||
         `${i.NOMBRE} ${i.APELLIDOPATERNO}`.toLowerCase().includes(q)
       );
-    } else {
+    } else if (this.activeTab === 'egresos') {
       this.filteredEgresos = this.egresos.filter(e => 
         e.ID.toString().includes(q) || 
         e.NOMBREHABITACION.toLowerCase().includes(q) ||
         e.INGRESOS_ID.toString().includes(q)
       );
+    } else if (this.activeTab === 'historial') {
+      this.filteredHistorial = this.historial.filter(h => 
+        h.INGRESO_ID.toString().includes(q) || 
+        h.NOMBREHABITACION.toLowerCase().includes(q) ||
+        `${h.MEDICO_NOMBRE} ${h.MEDICO_PATERNO}`.toLowerCase().includes(q) ||
+        h.ESTADO.toLowerCase().includes(q)
+      );
     }
-    this.renderTable();
+    this.switchTab(this.activeTab);
   },
 
   async showIngresoModal(item = null) {
